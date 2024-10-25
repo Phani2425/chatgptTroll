@@ -42,15 +42,34 @@ io.on('connection', (socket) => {
         messages[roomId].push({ role: 'asker', message: msg });
         io.to(roomId).emit('question', { roomId, msg });
         io.to(roomId).emit('chatHistory', messages[roomId]);
+        io.emit('getRooms');
     });
 
-    // Handle incoming responses
     socket.on('response', (data) => {
         const { roomId, msg } = data;
         messages[roomId] = messages[roomId] || [];
         messages[roomId].push({ role: 'responder', message: msg });
         io.to(roomId).emit('response', { roomId, msg });
         io.to(roomId).emit('chatHistory', messages[roomId]);
+        io.emit('getRooms');
+    });
+
+    socket.on('typing', (data) => {
+        const { roomId } = data;
+        socket.to(roomId).emit('typing');
+    });
+
+    socket.on('stopTyping', (data) => {
+        const { roomId } = data;
+        socket.to(roomId).emit('stopTyping');
+    });
+
+
+    socket.on('deleteRoom', (roomId) => {
+        console.log(`Deleting room: ${roomId}`);
+        io.to(roomId).emit('roomDeleted', { roomId });
+        delete messages[roomId];
+        io.emit('getRooms');
     });
 
     socket.on('getRooms', () => {
