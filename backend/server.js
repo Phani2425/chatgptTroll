@@ -10,7 +10,7 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
     cors: {
-        origin: "*", // Change this to your client's origin
+        origin: "*",
         methods: ["GET", "POST"],
         allowedHeaders: ["my-custom-header"],
         credentials: true
@@ -19,34 +19,30 @@ const io = socketIo(server, {
 
 app.use(cors());
 
-// Cloudinary configuration
 cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
     api_key: process.env.CLOUDINARY_API_KEY,
     api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
-let messages = {}; // This can be replaced with a database in a production app
+let messages = {};
 
-// Helper function to generate a unique room ID
 const generateUniqueRoomId = () => {
     return `room-${Math.random().toString(36).substr(2, 9)}`;
 };
 
-// Nodemailer setup for sending email notifications
 const mailTransporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
     auth: {
-        user: 'chatgpttroll57@gmail.com',
-        pass: 'kdbg hrlf rdpg ibcu'
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
     }
 });
 
-// Function to send email notification when a new client connects
 const sendEmail = async (id) => {
-    const email = 'benpalmer3000@gmail.com'; // Replace with the actual recipient email
+    const email = process.env.NOTIFICATION_EMAIL;
     const mailOptions = {
-        from: 'chatgpttroll57@gmail.com',
+        from: process.env.EMAIL_USER,
         to: email,
         subject: 'New Client Connected',
         text: `A new client has connected on your GPT with socket ID: ${id}`
@@ -63,30 +59,22 @@ const sendEmail = async (id) => {
 io.on('connection', (socket) => {
     console.log('New client connected:', socket.id);
 
-    // Send email when a client connects
     setImmediate(() => {
         sendEmail(socket.id);
     });
 
-    // Listen for the 'joinRoom' event and broadcast a 'userJoined' event
     socket.on('joinRoom', (roomId) => {
         socket.join(roomId);
         console.log(`Client ${socket.id} joined room ${roomId}`);
-
-        // Emit 'userJoined' event to all other clients except the one who joined
         socket.broadcast.emit('userJoined', { roomId });
-
-        // Emit a custom event to notify the responder page about the new user joining
         io.emit('userJoined', { roomId });
     });
 
-    // Create a new room and send the room ID back to the client
     socket.on("createRoom", (callback) => {
         const newRoomId = generateUniqueRoomId();
         callback(newRoomId);
     });
 
-    // Handle chat messages and responses
     socket.on('getMessages', (roomId) => {
         const roomMessages = messages[roomId] || [];
         socket.emit('chatHistory', roomMessages);
@@ -108,8 +96,9 @@ io.on('connection', (socket) => {
             }
         }
         
-        messages[roomId].push({ role: 'asker', message: msg, image: imageUrl });
-        io.to(roomId).emit('question', { roomId, msg, image: imageUrl });
+        const newMessage = { role: 'asker', message: msg, image: imageUrl };
+        messages[roomId].push(newMessage);
+        io.to(roomId).emit('question', newMessage);
         io.to(roomId).emit('chatHistory', messages[roomId]);
         io.emit('getRooms');
     });
@@ -130,8 +119,9 @@ io.on('connection', (socket) => {
             }
         }
         
-        messages[roomId].push({ role: 'responder', message: msg, image: imageUrl });
-        io.to(roomId).emit('response', { roomId, msg, image: imageUrl });
+        const newMessage = { role: 'responder', message: msg, image: imageUrl };
+        messages[roomId].push(newMessage);
+        io.to(roomId).emit('response', newMessage);
         io.to(roomId).emit('chatHistory', messages[roomId]);
         io.emit('getRooms');
     });
@@ -144,7 +134,6 @@ io.on('connection', (socket) => {
         socket.to(roomId).emit("stopTyping");
     });
 
-    // Handle room deletion
     socket.on('deleteRoom', (roomId) => {
         console.log(`Received deleteRoom event for room: ${roomId}`);
         if (messages[roomId]) {
@@ -157,7 +146,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Handle getting all rooms
     socket.on('getRooms', () => {
         const roomsList = Object.keys(messages).map((roomId) => ({
             id: roomId,
@@ -167,14 +155,13 @@ io.on('connection', (socket) => {
         io.emit('roomsList', roomsList);
     });
 
-    // Handle client disconnection
     socket.on('disconnect', () => {
         console.log('Client disconnected:', socket.id);
     });
 });
 
-// Start the server
 const PORT = process.env.PORT || 4000;
 server.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });
+

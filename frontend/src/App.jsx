@@ -49,24 +49,20 @@ const Chat = () => {
       chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
     };
 
-    const handleQuestion = ({ roomId: receivedRoomId, msg, image }) => {
-      if (receivedRoomId === roomId) {
-        setChat((prevChat) => {
-          const newChat = [...prevChat, { role: "asker", message: msg, image }];
-          chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-          return newChat;
-        });
-      }
+    const handleQuestion = (newMessage) => {
+      setChat((prevChat) => {
+        const newChat = [...prevChat, newMessage];
+        chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        return newChat;
+      });
     };
 
-    const handleResponse = ({ roomId: receivedRoomId, msg, image }) => {
-      if (receivedRoomId === roomId) {
-        setChat((prevChat) => {
-          const newChat = [...prevChat, { role: "responder", message: msg, image }];
-          chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-          return newChat;
-        });
-      }
+    const handleResponse = (newMessage) => {
+      setChat((prevChat) => {
+        const newChat = [...prevChat, newMessage];
+        chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        return newChat;
+      });
     };
 
     const handleRoomDeleted = ({ roomId }) => {
@@ -77,12 +73,10 @@ const Chat = () => {
 
     const handleTyping = () => {
       console.log("Typing...");
-      socket.emit("typing", { roomId });
-      setIsTyping(false);
+      setIsTyping(true);
     };
 
     const handleStopTyping = () => {
-      socket.emit("stopTyping", { roomId });
       setIsTyping(false);
     };
 
@@ -135,7 +129,6 @@ const Chat = () => {
 
   const handleStopTyping = () => {
     socket.emit("stopTyping", { roomId });
-    setIsTyping(false);
   };
 
   let typingTimeout;
@@ -233,7 +226,8 @@ const Chat = () => {
               >
                 {msg.role === 'responder' && (
                   <div className="rounded-full mr-2 h-7 w-7  p-1 border border-slate-200  flex-shrink-0">
-                    <img src={responder} alt="Responder Logo" className="  rounded-full " />
+                    <img
+src={responder} alt="Responder Logo" className="  rounded-full " />
                   </div>
                 )}
                 <div
@@ -327,8 +321,7 @@ const Chat = () => {
           </div>
         )}
       </form>
-      <div className="text-center p-2 text-xs sm:text-sm hidden sm:block text-gray
--500">
+      <div className="text-center p-2 text-xs sm:text-sm hidden sm:block text-gray-500">
         ChatGPT can make mistakes. Check important info.
       </div>
     </div>
