@@ -20,9 +20,9 @@ const io = socketIo(server, {
 app.use(cors());
 
 cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET
+    cloud_name: "dwdffshqd",
+    api_key: "158173115974515",
+    api_secret: "5ToDbwGd91ilrDSDYLCcFJaCe6Y"
 });
 
 let messages = {};
