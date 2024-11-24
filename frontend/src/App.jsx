@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import  { useState, useEffect, useRef } from "react";
 import {
   BrowserRouter as Router,
   Route,
@@ -8,18 +8,18 @@ import {
   useNavigate,
 } from "react-router-dom";
 import { io } from "socket.io-client";
-import { MessageSquare, ArrowUpIcon, User2Icon, ArrowLeft } from "lucide-react";
+import { MessageSquare, ArrowUpIcon, User2Icon, ImageIcon } from 'lucide-react';
 import { IoIosArrowDown } from "react-icons/io";
 import { motion, AnimatePresence } from "framer-motion";
 import toast, { Toaster } from "react-hot-toast";
 import "react-toastify/dist/ReactToastify.css";
 
-import responder from "../src/assets/chatgpt.svg"
-import copy from '../src/assets/copy.svg'
-import like from '../src/assets/like.svg'
-import dislike from '../src/assets/dislike.svg'
-import share from '../src/assets/share.svg'
-import newchat from '../src/assets/newchat.svg'
+import responder from "../src/assets/chatgpt.svg";
+import copy from '../src/assets/copy.svg';
+import like from '../src/assets/like.svg';
+import dislike from '../src/assets/dislike.svg';
+import share from '../src/assets/share.svg';
+import newchat from '../src/assets/newchat.svg';
 
 const socket = io("https://chatgpttroll-3l88.onrender.com/");
 
@@ -36,6 +36,7 @@ const Chat = () => {
   const [chat, setChat] = useState([]);
   const [message, setMessage] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [selectedImage, setSelectedImage] = useState(null);
   const chatEndRef = useRef(null);
   const navigate = useNavigate();
 
@@ -48,20 +49,20 @@ const Chat = () => {
       chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
     };
 
-    const handleQuestion = ({ roomId: receivedRoomId, msg }) => {
+    const handleQuestion = ({ roomId: receivedRoomId, msg, image }) => {
       if (receivedRoomId === roomId) {
         setChat((prevChat) => {
-          const newChat = [...prevChat, { role: "asker", message: msg }];
+          const newChat = [...prevChat, { role: "asker", message: msg, image }];
           chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
           return newChat;
         });
       }
     };
 
-    const handleResponse = ({ roomId: receivedRoomId, msg }) => {
+    const handleResponse = ({ roomId: receivedRoomId, msg, image }) => {
       if (receivedRoomId === roomId) {
         setChat((prevChat) => {
-          const newChat = [...prevChat, { role: "responder", message: msg }];
+          const newChat = [...prevChat, { role: "responder", message: msg, image }];
           chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
           return newChat;
         });
@@ -89,10 +90,8 @@ const Chat = () => {
     socket.on("question", handleQuestion);
     socket.on("response", handleResponse);
     socket.on("roomDeleted", handleRoomDeleted);
-    
     socket.on("typing", handleTyping);
     socket.on("stopTyping", handleStopTyping);
-    
 
     return () => {
       socket.off("chatHistory", handleChatHistory);
@@ -102,39 +101,61 @@ const Chat = () => {
       socket.off("typing", handleTyping);
       socket.off("stopTyping", handleStopTyping);
     };
-  }, [roomId]);
+  }, [roomId, navigate]);
 
   const sendMessage = (e) => {
     e.preventDefault();
-    if (message.trim()) {
+    if (message.trim() || selectedImage) {
       const role = window.location.pathname.includes("/chat/")
         ? "responder"
         : "asker";
-      socket.emit(role === "responder" ? "response" : "question", {
-        roomId,
-        msg: message,
-      });
+      
+      if (selectedImage) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          socket.emit(role === "responder" ? "response" : "question", {
+            roomId,
+            msg: message,
+            image: reader.result,
+          });
+        };
+        reader.readAsDataURL(selectedImage);
+      } else {
+        socket.emit(role === "responder" ? "response" : "question", {
+          roomId,
+          msg: message,
+        });
+      }
+
       setMessage("");
+      setSelectedImage(null);
       socket.emit("stopTyping", { roomId });
     }
   };
 
+  const handleStopTyping = () => {
+    socket.emit("stopTyping", { roomId });
+    setIsTyping(false);
+  };
 
-  // Emitting 'stopTyping' when user stops typing
+  let typingTimeout;
+  const handleInputChange = (e) => {
+    setMessage(e.target.value);
+    socket.emit("typing", { roomId });
+    autoResize(e.target);
 
+    clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(handleStopTyping, 1000);
+  };
 
-// Example: You could use a timeout to detect when the user stops typing
-let typingTimeout;
-const handleInputChange = (e) => {
-  setMessage(e.target.value);
-  socket.emit("typing", { roomId });
-  autoResize(e.target);
-
-  // Clear the previous timeout and set a new one
-  clearTimeout(typingTimeout);
-  typingTimeout = setTimeout(handleStopTyping, 1000); // Adjust the time for when to stop typing
-};
-  
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (file && file.type.startsWith("image/")) {
+      setSelectedImage(file);
+    } else {
+      toast.error("Please select a valid image file");
+    }
+  };
 
   const shareChat = () => {
     const shareData = {
@@ -149,7 +170,7 @@ const handleInputChange = (e) => {
         navigator.clipboard.writeText(shareData.url).then(() => {
             toast.success("Link copied to clipboard!");
         }).catch((err) => {
-            toast.error("Could not copy text...");
+            toast.error("Could not copy text...", err);
         });
     }
   };
@@ -166,132 +187,153 @@ const handleInputChange = (e) => {
   };
 
   return (
-<div className="flex flex-col h-screen bg-white text-gray-800">
-  <header className="flex justify-between items-center p-2 sm:p-4 border-b border-gray-200">
-    <div className="flex items-center gap-1 sm:gap-2">
-
-      <button
-        onClick={createNewChat}
-        className="p-1 sm:p-2 rounded-md hover:bg-gray-100"
-      >
-        <img src={newchat} alt="New Chat" className="h-4 w-4 sm:h-6 sm:w-6" />
-      </button>
-      <div className="flex gap-1 items-center">
-        <span className="font-semibold text-lg sm:text-xl text-zinc-700">ChatGPT </span>
-        <IoIosArrowDown/>
+    <div className="flex flex-col h-screen bg-white text-gray-800">
+      <header className="flex justify-between items-center p-2 sm:p-4 border-b border-gray-200">
+        <div className="flex items-center gap-1 sm:gap-2">
+          <button
+            onClick={createNewChat}
+            className="p-1 sm:p-2 rounded-md hover:bg-gray-100"
+          >
+            <img src={newchat} alt="New Chat" className="h-4 w-4 sm:h-6 sm:w-6" />
+          </button>
+          <div className="flex gap-1 items-center">
+            <span className="font-semibold text-lg sm:text-xl text-zinc-700">ChatGPT </span>
+            <IoIosArrowDown />
+          </div>
+        </div>
+        <h1 className="text-lg sm:text-xl font-semibold hidden sm:flex gap-2 items-center">New Chat </h1>
+        <div className="flex items-center gap-2 sm:gap-6">
+          <motion.button
+            whileTap={{ scale: 0.9 }}
+            className="share-button p-1 sm:p-2 bg-white text-black rounded-3xl px-2 sm:px-4 border border-gray-300 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm"
+            onClick={shareChat}
+          >
+            <img src={share} alt="share" className="h-3 sm:h-5" /> <span className="hidden sm:inline">Share</span>
+          </motion.button>
+          <div className="p-1 sm:p-2 rounded-full bg-slate-200 group cursor-pointer"><User2Icon className="w-4 h-4 sm:w-6 sm:h-6" /></div>
+        </div>
+      </header>
+      <main className="w-full sm:w-11/12 md:w-10/12 lg:w-9/12 mx-auto flex-1 overflow-auto p-2 sm:p-4 space-y-4 sm:space-y-6 mt-6 hide-scrollbar scroll-smooth">
+        <AnimatePresence>
+          {chat.map((msg, idx) => {
+            const isLastResponderMessage =
+              msg.role === "responder" &&
+              (idx === chat.length - 1);
+            
+            return (
+              <motion.div
+                key={idx}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.3 }}
+                className={`flex items-start relative ${
+                  msg.role === "responder" ? "justify-start" : "justify-end"
+                }`}
+              >
+                {msg.role === 'responder' && (
+                  <div className="rounded-full mr-2 h-7 w-7  p-1 border border-slate-200  flex-shrink-0">
+                    <img src={responder} alt="Responder Logo" className="  rounded-full " />
+                  </div>
+                )}
+                <div
+                  className={`${
+                    msg.role === "responder" ? "responder-bubble" : "asker-bubble"
+                  } max-w-[85%] sm:max-w-[70%] rounded-2xl sm:rounded-3xl px-3 py-2 sm:px-5 sm:py-2.5 text-sm sm:text-base ${
+                    msg.role === "responder" ? "text-left" : "text-right"
+                  } ${msg.role === 'asker' ? 'bg-[#f4f4f4]' : 'bg-white'}`}
+                >
+                  {msg.message}
+                  {msg.image && (
+                    <img
+                      src={msg.image}
+                      alt="Uploaded"
+                      className="mt-2 max-w-full h-auto rounded-lg"
+                    />
+                  )}
+                </div>
+                {isLastResponderMessage && (
+                  <div className="flex space-x-1 mt-1 sm:mt-2 absolute left-8 sm:left-12 top-full">
+                    <div className="p-1 sm:p-2 cursor-pointer hover:bg-gray-100 rounded-full">
+                      <img src={copy} alt="Copy" className="h-3 w-3 sm:h-4 sm:w-4" />
+                    </div>
+                    <div className="p-1 sm:p-2 cursor-pointer hover:bg-gray-100 rounded-full">
+                      <img src={like} alt="Like" className="h-3 w-3 sm:h-4 sm:w-4" />
+                    </div>
+                    <div className="p-1 sm:p-2 cursor-pointer hover:bg-gray-100 rounded-full">
+                      <img src={dislike} alt="Dislike" className="h-3 w-3 sm:h-4 sm:w-4" />
+                    </div> 
+                  </div>
+                )}
+              </motion.div>
+            )
+          })}
+          {isTyping && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.3 }}
+              className={`flex ${window.location.pathname.includes('/chat/') ? "justify-end" : "justify-start"}`}
+            >
+              <div className="max-w-3/4 p-2 sm:p-3 rounded-lg bg-gray-100 text-gray-800 mt-2 sm:mt-3">
+                <div className="flex items-center space-x-1 sm:space-x-2">
+                  <div className="typing-dot bg-gray-400 rounded-full h-1.5 w-1.5 sm:h-2 sm:w-2 animate-bounce"></div>
+                  <div className="typing-dot bg-gray-400 rounded-full h-1.5 w-1.5 sm:h-2 sm:w-2 animate-bounce delay-100"></div>
+                  <div className="typing-dot bg-gray-400 rounded-full h-1.5 w-1.5 sm:h-2 sm:w-2 animate-bounce delay-200"></div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+          <div ref={chatEndRef}></div>
+        </AnimatePresence>
+      </main>
+      
+      <form onSubmit={sendMessage} className="p-2 sm:p-4">
+        <div className="flex items-center w-full sm:w-10/12 md:w-9/12 lg:w-7/12 mx-auto space-x-2 py-1 rounded-[33px] bg-[#f4f4f4] relative pr-2">
+          <label htmlFor="image-upload" className="cursor-pointer p-2">
+            <ImageIcon size={18} className="sm:w-5 sm:h-5 text-gray-500" />
+          </label>
+          <input
+            id="image-upload"
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleImageUpload}
+          />
+          <textarea
+            value={message}
+            onChange={handleInputChange}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage(e);
+              }
+            }}
+            placeholder="Message ChatGpt"
+            className="flex-1 py-2 sm:py-3 px-3 sm:px-5 rounded-[33px] bg-[#f4f4f4] focus-within:outline-none placeholder:text-slate-600 text-sm sm:text-base resize-none overflow-hidden"
+            rows="1"
+          />
+          <button
+            type="submit"
+            className="p-1.5 sm:p-2 rounded-full bg-black text-white hover:bg-opacity-75"
+          >
+            <ArrowUpIcon size={18} className="sm:w-5 sm:h-5" fontWeight={900} />
+          </button>
+        </div>
+        {selectedImage && (
+          <div className="mt-2 text-sm text-gray-500">
+            Image selected: {selectedImage.name}
+          </div>
+        )}
+      </form>
+      <div className="text-center p-2 text-xs sm:text-sm hidden sm:block text-gray
+-500">
+        ChatGPT can make mistakes. Check important info.
       </div>
     </div>
-    <h1 className="text-lg sm:text-xl font-semibold hidden sm:flex gap-2 items-center">New Chat </h1>
-    <div className="flex items-center gap-2 sm:gap-6">
-      <motion.button
-        whileTap={{ scale: 0.9 }}
-        className="share-button p-1 sm:p-2 bg-white text-black rounded-3xl px-2 sm:px-4 border border-gray-300 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm"
-        onClick={shareChat}
-      >
-        <img src={share} alt="share" className="h-3 sm:h-5" /> <span className="hidden sm:inline">Share</span>
-      </motion.button>
-      <div className="p-1 sm:p-2 rounded-full bg-slate-200 group cursor-pointer"><User2Icon className="w-4 h-4 sm:w-6 sm:h-6" /></div>
-    </div>
-  </header>
-  <main className="w-full sm:w-11/12 md:w-10/12 lg:w-9/12 mx-auto flex-1 overflow-auto p-2 sm:p-4 space-y-4 sm:space-y-6 mt-6 hide-scrollbar scroll-smooth">
-    <AnimatePresence>
-      {chat.map((msg, idx) => {
-        const isLastResponderMessage =
-          msg.role === "responder" &&
-          (idx === chat.length - 1);
-        
-        return (
-          <motion.div
-            key={idx}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.3 }}
-            className={`flex items-start relative ${
-              msg.role === "responder" ? "justify-start" : "justify-end"
-            }`}
-          >
-            {msg.role === 'responder' && (
-              <div className="rounded-full mr-2 h-7 w-7  p-1 border border-slate-200  flex-shrink-0">
-                <img src={responder} alt="Responder Logo" className="  rounded-full " />
-              </div>
-            )}
-            <div
-              className={`${
-                msg.role === "responder" ? "responder-bubble" : "asker-bubble"
-              } max-w-[85%] sm:max-w-[70%] rounded-2xl sm:rounded-3xl px-3 py-2 sm:px-5 sm:py-2.5 text-sm sm:text-base ${
-                msg.role === "responder" ? "text-left" : "text-right"
-              } ${msg.role === 'asker' ? 'bg-[#f4f4f4]' : 'bg-white'}`}
-            >
-              {msg.message}
-            </div>
-            {isLastResponderMessage && (
-              <div className="flex space-x-1 mt-1 sm:mt-2 absolute left-8 sm:left-12 top-full">
-                <div className="p-1 sm:p-2 cursor-pointer hover:bg-gray-100 rounded-full">
-                  <img src={copy} alt="Copy" className="h-3 w-3 sm:h-4 sm:w-4" />
-                </div>
-                <div className="p-1 sm:p-2 cursor-pointer hover:bg-gray-100 rounded-full">
-                  <img src={like} alt="Like" className="h-3 w-3 sm:h-4 sm:w-4" />
-                </div>
-                <div className="p-1 sm:p-2 cursor-pointer hover:bg-gray-100 rounded-full">
-                  <img src={dislike} alt="Dislike" className="h-3 w-3 sm:h-4 sm:w-4" />
-                </div> 
-              </div>
-            )}
-          </motion.div>
-        )
-      })}
-      {isTyping && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -20 }}
-          transition={{ duration: 0.3 }}
-          className={`flex ${window.location.pathname.includes('/chat/') ? "justify-end" : "justify-start"}`}
-        >
-          <div className="max-w-3/4 p-2 sm:p-3 rounded-lg bg-gray-100 text-gray-800 mt-2 sm:mt-3">
-            <div className="flex items-center space-x-1 sm:space-x-2">
-              <div className="typing-dot bg-gray-400 rounded-full h-1.5 w-1.5 sm:h-2 sm:w-2 animate-bounce"></div>
-              <div className="typing-dot bg-gray-400 rounded-full h-1.5 w-1.5 sm:h-2 sm:w-2 animate-bounce delay-100"></div>
-              <div className="typing-dot bg-gray-400 rounded-full h-1.5 w-1.5 sm:h-2 sm:w-2 animate-bounce delay-200"></div>
-            </div>
-          </div>
-        </motion.div>
-      )}
-      <div ref={chatEndRef}></div>
-    </AnimatePresence>
-  </main>
-  
-  <form onSubmit={sendMessage} className="p-2 sm:p-4">
-    <div className="flex items-center w-full sm:w-10/12 md:w-9/12 lg:w-7/12 mx-auto space-x-2 py-1 rounded-[33px] bg-[#f4f4f4] relative pr-2">
-      <textarea
-        value={message}
-        onChange={handleInputChange}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage(e);
-          }
-        }}
-        placeholder="Message ChatGpt"
-        className="flex-1 py-2 sm:py-3 px-3 sm:px-5 rounded-[33px] bg-[#f4f4f4] focus-within:outline-none placeholder:text-slate-600 text-sm sm:text-base resize-none overflow-hidden"
-        rows="1"
-      />
-      <button
-        type="submit"
-        className="p-1.5 sm:p-2 rounded-full bg-black text-white hover:bg-opacity-75"
-      >
-        <ArrowUpIcon size={18} className="sm:w-5 sm:h-5" fontWeight={900} />
-      </button>
-    </div>
-  </form>
-  <div className="text-center p-2 text-xs sm:text-sm hidden sm:block text-gray-500">
-    ChatGPT can make mistakes. Check important info.
-  </div>
-</div>
   );
 };
-
 
 const Responder = () => {
   const [activeRooms, setActiveRooms] = useState({});
@@ -306,13 +348,11 @@ const Responder = () => {
     }).catch((error) => {
         console.error('Error playing sound:', error);
     });
-};
-  
+  };
 
   useEffect(() => {
     socket.emit("getRooms");
   
-    // Notify the responder when a new user joins any room
     socket.on("userJoined", ({ roomId }) => {
       playSuccessSound();
       console.log(`User joined room: ${roomId}`);
@@ -320,9 +360,8 @@ const Responder = () => {
         onOpen: () => {
           console.log("Toast opened, playing sound...");
           playSuccessSound();
-        },  // Play sound when the toast opens
+        },
       });
-
     });
   
     socket.on("roomsList", (roomsList) => {
@@ -452,7 +491,6 @@ const Responder = () => {
   );
 };
 
-
 const App = () => {
   const roomId = getRoomIdForUser();
 
@@ -482,7 +520,7 @@ const App = () => {
           />
         </Routes>
       </div>
-      <Toaster/>
+      <Toaster />
     </Router>
   );
 };
@@ -492,3 +530,4 @@ const getRoomIdForUser = () => {
 };
 
 export default App;
+

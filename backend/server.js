@@ -3,6 +3,8 @@ const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
 const nodemailer = require('nodemailer');
+const cloudinary = require('cloudinary').v2;
+require('dotenv').config();
 
 const app = express();
 const server = http.createServer(app);
@@ -16,6 +18,13 @@ const io = socketIo(server, {
 });
 
 app.use(cors());
+
+// Cloudinary configuration
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET
+});
 
 let messages = {}; // This can be replaced with a database in a production app
 
@@ -83,31 +92,57 @@ io.on('connection', (socket) => {
         socket.emit('chatHistory', roomMessages);
     });
 
-    socket.on('question', (data) => {
-        const { roomId, msg } = data;
+    socket.on('question', async (data) => {
+        const { roomId, msg, image } = data;
         messages[roomId] = messages[roomId] || [];
-        messages[roomId].push({ role: 'asker', message: msg });
-        io.to(roomId).emit('question', { roomId, msg });
+        
+        let imageUrl = null;
+        if (image) {
+            try {
+                const uploadResult = await cloudinary.uploader.upload(image, {
+                    folder: 'chat_images',
+                });
+                imageUrl = uploadResult.secure_url;
+            } catch (error) {
+                console.error('Error uploading image to Cloudinary:', error);
+            }
+        }
+        
+        messages[roomId].push({ role: 'asker', message: msg, image: imageUrl });
+        io.to(roomId).emit('question', { roomId, msg, image: imageUrl });
         io.to(roomId).emit('chatHistory', messages[roomId]);
         io.emit('getRooms');
     });
 
-    socket.on('response', (data) => {
-        const { roomId, msg } = data;
+    socket.on('response', async (data) => {
+        const { roomId, msg, image } = data;
         messages[roomId] = messages[roomId] || [];
-        messages[roomId].push({ role: 'responder', message: msg });
-        io.to(roomId).emit('response', { roomId, msg });
+        
+        let imageUrl = null;
+        if (image) {
+            try {
+                const uploadResult = await cloudinary.uploader.upload(image, {
+                    folder: 'chat_images',
+                });
+                imageUrl = uploadResult.secure_url;
+            } catch (error) {
+                console.error('Error uploading image to Cloudinary:', error);
+            }
+        }
+        
+        messages[roomId].push({ role: 'responder', message: msg, image: imageUrl });
+        io.to(roomId).emit('response', { roomId, msg, image: imageUrl });
         io.to(roomId).emit('chatHistory', messages[roomId]);
         io.emit('getRooms');
     });
 
     socket.on("typing", ({ roomId }) => {
         socket.to(roomId).emit("typing");
-      });
+    });
       
-      socket.on("stopTyping", ({ roomId }) => {
+    socket.on("stopTyping", ({ roomId }) => {
         socket.to(roomId).emit("stopTyping");
-      });
+    });
 
     // Handle room deletion
     socket.on('deleteRoom', (roomId) => {
